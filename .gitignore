@@ -1,2 +1,4 @@
 # 忽略根目录下的 test 文件夹
 /test/
+/.hvigor/
+/.idea/
