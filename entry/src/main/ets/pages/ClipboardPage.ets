@@ -4,7 +4,7 @@ import { ClipItem } from '../model/ClipItem';
 import { CategoryItem } from '../model/CategoryItem';
 import { SearchBar } from '../component/SearchBar';
 import { ClipCard } from '../component/ClipCard';
-import { Breakpoint, calcGridColumns } from '../common/BreakpointConstants';
+import { Breakpoint } from '../common/BreakpointConstants';
 
 /**
  * 剪贴板页面 — 首页时间线
@@ -65,8 +65,62 @@ export struct ClipboardPage {
           bottom: 4
         })
 
-        // 分类筛选横滑标签
-        this.buildCategoryFilter()
+        // 分类筛选标签（响应式：SM 横向滚动 + 可见滚动条，MD/LG 自动换行全部可见）
+        if (this.breakpoint === Breakpoint.SM) {
+          // 手机：横向滚动
+          Row() {
+            Scroll() {
+              Row() {
+                ForEach(this.getFilterCategories(), (cat: CategoryItem | null, index: number) => {
+                  if (index > 0) {
+                    Blank().width(8);
+                  }
+                  Text(cat ? cat.name : '全部')
+                    .fontSize(12)
+                    .fontWeight(this.isFilterActive(cat) ? FontWeight.Bold : FontWeight.Normal)
+                    .fontColor(this.isFilterActive(cat) ? Color.White : '#666666')
+                    .padding({ left: 14, right: 14, top: 6, bottom: 6 })
+                    .borderRadius(16)
+                    .backgroundColor(this.isFilterActive(cat)
+                      ? (cat ? cat.color : '#FF6B6B')
+                      : '#EEEEEE')
+                    .onClick(() => {
+                      this.vm.onFilterCategory(cat ? cat.id : 0);
+                    })
+                })
+              }
+              .padding({ left: 14, right: 14 })
+            }
+            .scrollable(ScrollDirection.Horizontal)
+            .scrollBar(BarState.Auto)
+            .width('100%')
+          }
+          .width('100%')
+          .height(44)
+          .margin({ bottom: 8 })
+        } else {
+          // 平板/PC：自动换行，全部标签可见
+          Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Start, alignItems: ItemAlign.Center }) {
+            ForEach(this.getFilterCategories(), (cat: CategoryItem | null, index: number) => {
+              Text(cat ? cat.name : '全部')
+                .fontSize(12)
+                .fontWeight(this.isFilterActive(cat) ? FontWeight.Bold : FontWeight.Normal)
+                .fontColor(this.isFilterActive(cat) ? Color.White : '#666666')
+                .padding({ left: 14, right: 14, top: 6, bottom: 6 })
+                .borderRadius(16)
+                .backgroundColor(this.isFilterActive(cat)
+                  ? (cat ? cat.color : '#FF6B6B')
+                  : '#EEEEEE')
+                .margin({ right: 8, bottom: 8 })
+                .onClick(() => {
+                  this.vm.onFilterCategory(cat ? cat.id : 0);
+                })
+            })
+          }
+          .width('100%')
+          .padding({ left: 24, right: 24 })
+          .margin({ bottom: 8 })
+        }
 
         // 内容区域（内联布局，确保 @Trace 数据变化时 UI 正确刷新）
         if (this.vm.clips.length === 0) {
@@ -99,76 +153,108 @@ export struct ClipboardPage {
           .scrollable(ScrollDirection.Vertical)
           .scrollBar(BarState.Off)
           .layoutWeight(1)
-        } else {
-          // 平板/PC：多列网格（Flex wrap 自动换行，单层 ForEach）
-          // LG(PC)：右键菜单 + 右侧预览面板；MD(平板)：长按菜单
+        } else if (this.breakpoint === Breakpoint.LG) {
+          // ============================================================
+          // PC (LG)：Grid 三列 + 右键菜单 + 双击预览 + 右侧预览面板
+          // ============================================================
           Row() {
-            Scroll() {
-              Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Start }) {
-                ForEach(this.vm.clips, (clip: ClipItem) => {
-                  Column() {
-                    ClipCard({
-                      clipItem: clip,
-                      categoryName: this.getCategoryName(clip.categoryId),
-                      categoryColor: this.getCategoryColor(clip.categoryId),
-                      isHovered: this.hoveredClipId === clip.id,
-                      wideLayout: true
-                    })
-                    .bindContextMenu(this.buildClipContextMenu(clip),
-                      this.breakpoint === Breakpoint.LG ? ResponseType.RightClick : ResponseType.LongPress)
-                    .onHover((isHover: boolean) => {
-                      if (isHover) {
-                        this.hoveredClipId = clip.id;
-                      } else if (this.hoveredClipId === clip.id) {
-                        this.hoveredClipId = -1;
-                      }
-                    })
-                  }
-                  .width(this.getCardWidth())
-                  .padding({ left: 3, right: 3 })
-                  .onClick(() => {
-                    if (this.breakpoint === Breakpoint.LG) {
-                      const now: number = Date.now();
-                      if (now - this.lastTapTime < 280 && this.lastTapClipId === clip.id) {
-                        if (this.tapTimer !== -1) {
-                          clearTimeout(this.tapTimer);
-                          this.tapTimer = -1;
-                        }
-                        this.handlePreview(clip);
-                        this.lastTapTime = 0;
-                        return;
-                      }
-                      this.lastTapTime = now;
-                      this.lastTapClipId = clip.id;
-                      if (this.tapTimer !== -1) {
-                        clearTimeout(this.tapTimer);
-                      }
-                      this.tapTimer = setTimeout(() => {
-                        this.handleCopy(clip);
-                        this.tapTimer = -1;
-                      }, 280);
-                    } else {
-                      this.handleCopy(clip);
+            Grid() {
+              ForEach(this.vm.clips, (clip: ClipItem) => {
+                GridItem() {
+                  ClipCard({
+                    clipItem: clip,
+                    categoryName: this.getCategoryName(clip.categoryId),
+                    categoryColor: this.getCategoryColor(clip.categoryId),
+                    isHovered: this.hoveredClipId === clip.id,
+                    wideLayout: true,
+                    showActions: !this.showPreview,
+                    onMore: (): void => {
+                      this.selectedClip = clip;
+                      this.showActionSheet = true;
                     }
                   })
-                }, (clip: ClipItem): string => {
-                  return clip.id.toString();
+                  .bindContextMenu(this.buildClipContextMenu(clip), ResponseType.RightClick)
+                  .onHover((isHover: boolean) => {
+                    if (isHover) {
+                      this.hoveredClipId = clip.id;
+                    } else if (this.hoveredClipId === clip.id) {
+                      this.hoveredClipId = -1;
+                    }
+                  })
+                }
+                .padding({ left: 3, right: 3, top: 3, bottom: 3 })
+                .onClick(() => {
+                  const now: number = Date.now();
+                  if (now - this.lastTapTime < 280 && this.lastTapClipId === clip.id) {
+                    if (this.tapTimer !== -1) {
+                      clearTimeout(this.tapTimer);
+                      this.tapTimer = -1;
+                    }
+                    this.handlePreview(clip);
+                    this.lastTapTime = 0;
+                    return;
+                  }
+                  this.lastTapTime = now;
+                  this.lastTapClipId = clip.id;
+                  if (this.tapTimer !== -1) {
+                    clearTimeout(this.tapTimer);
+                  }
+                  this.tapTimer = setTimeout(() => {
+                    this.handleCopy(clip);
+                    this.tapTimer = -1;
+                  }, 280);
                 })
-              }
-              .width('100%')
-              .padding({ left: 11, right: 11 })
+              }, (clip: ClipItem): string => {
+                return clip.id.toString();
+              })
             }
-            .scrollable(ScrollDirection.Vertical)
-            .scrollBar(BarState.Off)
+            .columnsTemplate('1fr 1fr 1fr')
+            .columnsGap(0)
+            .rowsGap(0)
+            .width('100%')
+            .padding({ left: 11, right: 11 })
             .layoutWeight(1)
 
-            // LG 专属：右侧预览面板
-            if (this.breakpoint === Breakpoint.LG && this.showPreview && this.previewClip) {
+            // 右侧预览面板
+            if (this.showPreview && this.previewClip) {
               Divider().vertical(true).height('100%').width(1).color('#F0F0F0')
               this.buildPreviewPanel()
             }
           }
           .width('100%')
+          .layoutWeight(1)
+        } else {
+          // ============================================================
+          // 平板 (MD)：Grid 双列 + 长按 Menu（与 PC 右键交互归一）
+          // ============================================================
+          Grid() {
+            ForEach(this.vm.clips, (clip: ClipItem) => {
+              GridItem() {
+                ClipCard({
+                  clipItem: clip,
+                  categoryName: this.getCategoryName(clip.categoryId),
+                  categoryColor: this.getCategoryColor(clip.categoryId),
+                  wideLayout: true,
+                  onMore: (): void => {
+                    this.selectedClip = clip;
+                    this.showActionSheet = true;
+                  }
+                })
+                .onClick(() => {
+                  this.handleCopy(clip);
+                })
+                .bindContextMenu(this.buildClipContextMenu(clip), ResponseType.LongPress)
+              }
+              .padding({ left: 3, right: 3, top: 3, bottom: 3 })
+            }, (clip: ClipItem): string => {
+              return clip.id.toString();
+            })
+          }
+          .columnsTemplate('1fr 1fr')
+          .columnsGap(0)
+          .rowsGap(0)
+          .width('100%')
+          .padding({ left: 11, right: 11 })
           .layoutWeight(1)
         }
       }
@@ -234,42 +320,6 @@ export struct ClipboardPage {
   }
 
   // ==================== 私有的构建器 ====================
-
-  @Builder buildCategoryFilter() {
-    Row() {
-      Scroll() {
-        Row() {
-          ForEach(this.getFilterCategories(), (cat: CategoryItem | null, index: number) => {
-            if (index > 0) {
-              Blank().width(8);
-            }
-            Text(cat ? cat.name : '全部')
-              .fontSize(12)
-              .fontWeight(this.isFilterActive(cat) ? FontWeight.Bold : FontWeight.Normal)
-              .fontColor(this.isFilterActive(cat) ? Color.White : '#666666')
-              .padding({ left: 14, right: 14, top: 6, bottom: 6 })
-              .borderRadius(16)
-              .backgroundColor(this.isFilterActive(cat)
-                ? (cat ? cat.color : '#FF6B6B')
-                : '#EEEEEE')
-              .onClick(() => {
-                this.vm.onFilterCategory(cat ? cat.id : 0);
-              })
-          })
-        }
-        .padding({
-          left: this.breakpoint === Breakpoint.SM ? 14 : 24,
-          right: this.breakpoint === Breakpoint.SM ? 14 : 24
-        })
-      }
-      .scrollBar(BarState.Off)
-      .width('100%')
-    }
-    .width('100%')
-    .height(44)
-    .margin({ bottom: 8 })
-  }
-
   @Builder buildEmptyState() {
     Column() {
       Text('📋').fontSize(48).margin({ bottom: 12 })
@@ -473,12 +523,6 @@ export struct ClipboardPage {
     .width(300)
     .height('100%')
     .backgroundColor(Color.White)
-  }
-
-  // ---------- 根据断点计算卡片宽度百分比 ----------
-  private getCardWidth(): string {
-    const cols: number = calcGridColumns(this.breakpoint);
-    return cols === 2 ? '50%' : '33.33%';
   }
 
   @Builder buildActionSheet() {

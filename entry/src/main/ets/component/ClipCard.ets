@@ -12,61 +12,83 @@ export struct ClipCard {
   @Param categoryColor: string = '#FF6B6B';
   @Param isHovered: boolean = false;
   @Param wideLayout: boolean = false;
+  @Param showActions: boolean = true;
+  @Event onMore: () => void = () => {};
 
   build() {
-    Column() {
-      Row() {
-        Text(this.clipItem.type === 'image' ? '🖼' : '📝')
-          .fontSize(this.wideLayout ? 26 : 22)
-          .margin({ right: 10 })
+    Stack({ alignContent: Alignment.TopEnd }) {
+      Column() {
+        Row() {
+          Text(this.clipItem.type === 'image' ? '🖼' : '📝')
+            .fontSize(this.wideLayout ? 26 : 22)
+            .margin({ right: 10 })
 
-        Column() {
-          if (this.clipItem.type === 'image') {
-            Image(this.clipItem.content)
-              .width('100%')
-              .height(this.wideLayout ? 160 : 120)
-              .objectFit(ImageFit.Cover)
-              .borderRadius(8)
-          } else {
-            Text(this.clipItem.content.substring(0, this.wideLayout ? 300 : 200))
-              .fontSize(this.wideLayout ? 16 : 14)
-              .fontColor('#1A1A1A')
-              .maxLines(this.wideLayout ? 5 : 3)
-              .textOverflow({ overflow: TextOverflow.Ellipsis })
-              .width('100%')
-          }
+          Column() {
+            if (this.clipItem.type === 'image') {
+              Image(this.clipItem.content)
+                .width('100%')
+                .height(this.wideLayout ? 160 : 120)
+                .objectFit(ImageFit.Cover)
+                .borderRadius(8)
+            } else {
+              Text(this.clipItem.content.substring(0, this.wideLayout ? 300 : 200))
+                .fontSize(this.wideLayout ? 16 : 14)
+                .fontColor('#1A1A1A')
+                .maxLines(this.wideLayout ? 5 : 3)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+                .width('100%')
+            }
 
-          Row() {
-            Text(this.formatTime(this.clipItem.createdAt))
-              .fontSize(this.wideLayout ? 12 : 11)
-              .fontColor('#999999')
-            Blank()
-            if (this.categoryName.length > 0) {
-              Text(this.categoryName)
-                .fontSize(this.wideLayout ? 12 : 10)
-                .fontColor(Color.White)
+            Row() {
+              Text(this.formatTime(this.clipItem.createdAt))
+                .fontSize(this.wideLayout ? 12 : 11)
+                .fontColor('#999999')
+              Blank()
+              if (this.categoryName.length > 0) {
+                Column() {
+                  Text(this.categoryName)
+                    .fontSize(this.wideLayout ? 12 : 10)
+                    .fontColor(Color.White)
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                }
+                .constraintSize({ maxWidth: 100 })
                 .padding({ left: 8, right: 8, top: 2, bottom: 2 })
                 .borderRadius(8)
                 .backgroundColor(this.categoryColor)
+              }
+              if (this.clipItem.isPinned) {
+                Text('📌')
+                  .fontSize(10)
+                  .margin({ left: 4 })
+              }
             }
-            if (this.clipItem.isPinned) {
-              Text('📌')
-                .fontSize(10)
-                .margin({ left: 4 })
-            }
+            .width('100%')
+            .margin({ top: 6 })
           }
-          .width('100%')
-          .margin({ top: 6 })
+          .layoutWeight(1)
         }
-        .layoutWeight(1)
+        .width('100%')
+        .padding(this.wideLayout ? 20 : 14)
       }
       .width('100%')
-      .padding(this.wideLayout ? 20 : 14)
+      .backgroundColor(Color.White)
+      .borderRadius(14)
+      .clip(true)
+      .border({ width: 1, color: '#F0F0F0' })
+
+      // 平板/PC 端 "⋯" 更多操作按钮，避免长按手势与滚动容器冲突
+      if (this.wideLayout && this.showActions) {
+        Text('⋯')
+          .fontSize(20)
+          .fontColor('#999999')
+          .padding({ left: 14, right: 14, top: 10, bottom: 14 })
+          .onClick(() => {
+            this.onMore();
+          })
+      }
     }
     .width('100%')
-    .backgroundColor(Color.White)
-    .borderRadius(14)
-    .border({ width: 1, color: '#F0F0F0' })
     .margin({ top: this.wideLayout ? 6 : 4, bottom: this.wideLayout ? 6 : 4 })
     .shadow(this.isHovered ? {
       radius: 8,
