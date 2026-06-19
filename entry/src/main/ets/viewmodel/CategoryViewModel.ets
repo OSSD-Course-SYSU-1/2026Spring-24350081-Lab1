@@ -7,10 +7,16 @@ import { CATEGORY_COLORS } from '../constant/CommonConstants';
 export class CategoryViewModel {
   @Trace categories: CategoryItem[] = [];
   private db: DatabaseHelper = DatabaseHelper.getInstance();
+  private distributedChangeCallback: ((devices: Array<string>) => void) | null = null;
 
   async init(context: common.UIAbilityContext): Promise<void> {
     await this.db.init(context);
     await this.loadCategories();
+    this.registerDistributedListener();
+  }
+
+  release(): void {
+    this.unregisterDistributedListener();
   }
 
   async loadCategories(): Promise<void> {
@@ -90,5 +96,26 @@ export class CategoryViewModel {
     const usedColors = this.categories.map(c => c.color);
     const available = CATEGORY_COLORS.find(c => !usedColors.includes(c));
     return available || CATEGORY_COLORS[this.categories.length % CATEGORY_COLORS.length];
+  }
+
+  /**
+   * 注册分布式数据变更监听。当远程设备同步分类数据到本地时，重新加载分类列表。
+   */
+  private registerDistributedListener(): void {
+    this.distributedChangeCallback = (_devices: Array<string>): void => {
+      console.info('Echo-CategoryVM', 'Distributed data change detected, reloading categories');
+      this.loadCategories();
+    };
+    this.db.onDistributedDataChange(this.distributedChangeCallback);
+  }
+
+  /**
+   * 注销分布式数据变更监听。
+   */
+  private unregisterDistributedListener(): void {
+    if (this.distributedChangeCallback) {
+      this.db.offDistributedDataChange(this.distributedChangeCallback);
+      this.distributedChangeCallback = null;
+    }
   }
 }

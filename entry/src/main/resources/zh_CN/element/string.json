@@ -151,6 +151,14 @@
     {
       "name": "pasteboard_permission_reason",
       "value": "用于读取剪贴板内容以记录历史"
+    },
+    {
+      "name": "distributed_datasync_permission_reason",
+      "value": "用于在您的设备间同步剪贴板历史记录"
+    },
+    {
+      "name": "image_unavailable",
+      "value": "图片仅在本设备可用"
     }
   ]
 }

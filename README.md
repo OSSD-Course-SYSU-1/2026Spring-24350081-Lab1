@@ -4,7 +4,7 @@
   <img src="AppScope/resources/base/media/app.png" alt="Echo Icon" width="128" />
 </p>
 
-> HarmonyOS NEXT · ArkTS · 版本 1.3.0 · 手机 / 平板 / 2in1 PC
+> HarmonyOS NEXT · ArkTS · 版本 1.4.0 · 手机 / 平板 / 2in1 PC · 跨设备自由流转
 
 ## 设计初衷
 
@@ -14,7 +14,7 @@
 
 ## 简介
 
-Echo 是一款运行在华为鸿蒙系统上的**历史剪贴板管理**应用。它能自动记录你复制的文字和图片，支持分类管理、全文搜索、置顶收藏、存储时效设置，并且**一套代码同时适配手机、平板和 PC（2in1）**三种设备形态。
+Echo 是一款运行在华为鸿蒙系统上的**历史剪贴板管理**应用。它能自动记录你复制的文字和图片，支持分类管理、全文搜索、置顶收藏、存储时效设置。一套代码同时适配**手机、平板和 PC（2in1）**三种设备形态，并且通过 HarmonyOS 分布式能力实现了**跨设备数据同步**与**跨端任务迁移**。
 
 ## 功能一览
 
@@ -32,6 +32,8 @@ Echo 是一款运行在华为鸿蒙系统上的**历史剪贴板管理**应用�
 | 🗑 删除 | 长按卡片 → 删除，支持一键清空 |
 | 🖼 图片支持 | 自动记录复制的图片，卡片内显示缩略图，可复制回剪贴板粘贴 |
 | 🌐 多端部署 | 一套代码适配手机、平板、2in1 PC，响应式布局自动切换 |
+| 🔄 分布式同步 | 跨设备自动同步剪贴板记录和分类数据（分布式 RDB + autoSync） |
+| 📱 跨端迁移 | 无缝切换设备继续使用，当前页面/搜索/筛选状态自动恢复 |
 
 ## 多端交互对照
 
@@ -68,7 +70,7 @@ Echo 是一款运行在华为鸿蒙系统上的**历史剪贴板管理**应用�
 | 本地存储 | `@ohos.data.preferences`（设置）/ `@ohos.file.fs`（图片文件） |
 | 图片 | `@ohos.multimedia.image`（PixelMap 读写） |
 | 日志 | `@kit.PerformanceAnalysisKit` (hilog) |
-| 权限 | `ohos.permission.READ_PASTEBOARD`（user_grant，运行时弹窗请求） |
+| 权限 | `ohos.permission.READ_PASTEBOARD` / `ohos.permission.DISTRIBUTED_DATASYNC`（user_grant，运行时弹窗请求） |
 
 ## 项目结构
 
@@ -78,7 +80,7 @@ Echo/
 ├── entry/src/main/
 │   ├── module.json5                # 模块描述（权限、deviceTypes: phone/tablet/2in1）
 │   ├── ets/
-│   │   ├── common/                 # 断点系统常量（BreakpointConstants）
+│   │   ├── common/                 # 断点系统（BreakpointConstants）、跨端迁移桥接（ContinuationBridge）
 │   │   ├── constant/               # 常量（分类颜色等）
 │   │   ├── entryability/           # UIAbility 入口
 │   │   ├── model/                  # 数据模型（ClipItem, CategoryItem）
@@ -158,7 +160,20 @@ saveClip()
 - 修复 saveClip 异步竞态（saveSeq 序列号）
 - 修复多列网格 ForEach key 不稳定、初始断点布局闪烁
 
-### 2026-06-09：多端 UI + PC 交互
+### 2026-06-09：分布式 RDB 同步 + 多端 UI + PC 交互
+
+- 分布式 RDB：启用 S3 安全等级 + `setDistributedTables` + autoSync
+- `imageAvailable` 字段 + 图片不可用占位 UI
+- 分布式变更监听 → 自动 `loadClips()` 刷新
+
+### 2026-06-11：跨端迁移 Continuation
+
+- 新建 `ContinuationBridge` 状态桥接单例
+- `EntryAbility` 实现 `onContinue` / `onNewWant` / `onCreate` 迁移三件套
+- `Index` / `ClipboardViewModel` 同步 UI 状态到桥接，对端自动恢复
+- 分布式 RDB（数据同步）+ Continuation（任务接续）= 完整自由流转体验
+
+### 2026-06-09（原）：多端 UI + PC 交互
 
 - 断点系统 px/vp 转换修复、@Builder 内联重构（平板 UI 不响应数据变化）
 - FlexWrap 单层 ForEach 替代嵌套 ForEach，`dataVersion` 响应式兜底
@@ -186,17 +201,78 @@ $env:DEVECO_SDK_HOME = "D:\DevEco Studio\sdk"
 hvigorw --mode module -p product=default -p module=entry@default assembleHap
 ```
 
+## 自由流转
+
+### 架构概览
+
+Echo 利用 HarmonyOS 分布式能力实现了两个层次的跨设备体验：
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    自由流转                           │
+├─────────────────────────┬───────────────────────────┤
+│   分布式 RDB 同步 (v7)    │   跨端迁移 Continuation (v8) │
+│   数据层 — 自动同步       │   任务层 — 无缝接续          │
+├─────────────────────────┼───────────────────────────┤
+│  clips / categories      │  currentTab               │
+│  表 autoSync             │  searchKeyword            │
+│  远程变更 → loadClips()   │  selectedCategoryId       │
+└─────────────────────────┴───────────────────────────┘
+```
+
+### 分布式 RDB 同步（v7）
+
+- **安全等级**：S3（满足分布式安全要求）
+- **同步表**：`clips` + `categories`，`autoSync: true` 自动同步
+- **变更监听**：`store.on('dataChange', SUBSCRIBE_TYPE_REMOTE)` → 远程数据到达 → `loadClips()` → UI 刷新
+- **去重窗口**：300s（覆盖分布式同步延迟下的重复写入）
+- **图片限制**：RDB 仅同步文件路径字符串，图片文件本身不跨设备传输。远端设备上图片显示占位提示
+
+### 跨端迁移（v8）
+
+- **配置**：`module.json5` → `continuable: true`
+- **源端**：`EntryAbility.onContinue()` → 快照 currentTab / searchKeyword / selectedCategoryId → `wantParam`
+- **对端**：`EntryAbility.onCreate()`（冷启动）/ `onNewWant()`（热启动）→ 从 `want.parameters` 恢复 → `Index.checkAndRestoreContinuation()`
+- **状态桥接**：`ContinuationBridge` 单例，连接 UIAbility（非 UI）与 Index（@ComponentV2）之间的状态传递
+
+### 迁移数据流
+
+```
+源端（设备A）                          对端（设备B）
+─────────                             ─────────
+Index/VM 状态变化
+  → ContinuationBridge 更新
+     currentTab / search / category
+                                      
+用户触发迁移                           
+  ↓                                    
+EntryAbility.onContinue()              
+  → snapshotToWantParam()              
+  → return AGREE                       
+                                       App 冷启动：onCreate(want)
+                                       App 热启动：onNewWant(want)
+                                         → restoreFromWant()
+                                         → pendingRestore = true
+                                       
+                                       Index.aboutToAppear/onPageShow
+                                         → consumeIfPending()
+                                         → 恢复 Tab / 搜索 / 筛选
+```
+
 ## 权限
 
 | 权限 | 用途 | 类型 |
 |------|------|------|
 | `ohos.permission.READ_PASTEBOARD` | 读取系统剪贴板 | user_grant（运行时弹窗请求） |
+| `ohos.permission.DISTRIBUTED_DATASYNC` | 跨设备数据同步 | user_grant（运行时弹窗请求） |
 | `ohos.permission.INTERNET` | 基础网络 | normal |
 
 ## 已知限制
 
 - ⚠️ 重启 App 后图片粘贴功能偶发不稳定，疑似 HarmonyOS 沙箱文件路径或 `MIMETYPE_PIXELMAP` 兼容性限制
 - ⚠️ 系统级悬浮窗在 HarmonyOS NEXT 手机设备上不向第三方 App 开放，此功能已搁置
+- ⚠️ 跨端迁移需双端登录同一华为账号、开启 Wi-Fi 和蓝牙、均为 HarmonyOS NEXT Release 及以上版本
+- ⚠️ 分布式同步仅传输数据库记录，图片文件本身不跨设备同步（远端显示占位提示）
 
 ## 许可证
 

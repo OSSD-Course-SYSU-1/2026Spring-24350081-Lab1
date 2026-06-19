@@ -25,11 +25,29 @@ export struct ClipCard {
 
           Column() {
             if (this.clipItem.type === 'image') {
-              Image(this.clipItem.content)
+              if (this.clipItem.imageAvailable) {
+                Image(this.clipItem.content)
+                  .width('100%')
+                  .height(this.wideLayout ? 160 : 120)
+                  .objectFit(ImageFit.Cover)
+                  .borderRadius(8)
+              } else {
+                // 分布式场景：图片文件仅在原设备可用
+                Column() {
+                  Text('🖼')
+                    .fontSize(32)
+                    .fontColor('#BBBBBB')
+                  Text('图片仅在本设备可用')
+                    .fontSize(11)
+                    .fontColor('#BBBBBB')
+                    .margin({ top: 4 })
+                }
                 .width('100%')
                 .height(this.wideLayout ? 160 : 120)
-                .objectFit(ImageFit.Cover)
+                .justifyContent(FlexAlign.Center)
+                .backgroundColor('#F5F5F5')
                 .borderRadius(8)
+              }
             } else {
               Text(this.clipItem.content.substring(0, this.wideLayout ? 300 : 200))
                 .fontSize(this.wideLayout ? 16 : 14)

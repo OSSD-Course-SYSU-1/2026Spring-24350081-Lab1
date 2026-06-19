@@ -706,6 +706,18 @@ export struct ClipboardPage {
   }
 
   private async handleCopy(clip: ClipItem): Promise<void> {
+    // 分布式场景：图片文件仅在原设备可用，显示提示
+    if (clip.type === 'image' && !clip.imageAvailable) {
+      this.copyToast = '图片仅在本设备可用';
+      if (this.toastTimer !== -1) {
+        clearTimeout(this.toastTimer);
+      }
+      this.toastTimer = setTimeout(() => {
+        this.copyToast = '';
+        this.toastTimer = -1;
+      }, 2000);
+      return;
+    }
     await this.vm.copyToClipboard(clip);
     this.copyToast = '已复制!';
     if (this.toastTimer !== -1) {

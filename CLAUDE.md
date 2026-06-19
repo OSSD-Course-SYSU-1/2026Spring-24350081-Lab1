@@ -14,6 +14,7 @@ Echo 是一款运行在华为鸿蒙（HarmonyOS）系统上的历史剪贴板管
 | 设计规范 | [docs/design-standards.md](docs/design-standards.md) | 颜色、组件、交互、命名规范 |
 | 开发指南 | [docs/dev-guide.md](docs/dev-guide.md) | 执行步骤、命令、验证方式 |
 | 开发日志 | [dev-logs/](dev-logs/) | 每日完成事项和待办记录 |
+| 自由流转 | [自由流转.md](自由流转.md) | 分布式软总线、数据、任务调度、跨端迁移开发指南 |
 
 ## 开发原则
 
@@ -45,6 +46,7 @@ Echo 是一款运行在华为鸿蒙（HarmonyOS）系统上的历史剪贴板管
 - `@ohos.file.fs` → 默认导入: `import fileIo from '...'`
 - `@ohos.data.preferences` → 默认导入: `import preferences from '...'`
 - `@kit.AbilityKit` / `@kit.ArkUI` / `@kit.PerformanceAnalysisKit` → 命名导入
+- `ContinuationBridge` 单例 → `import { ContinuationBridge } from '../common/ContinuationBridge'`
 
 ### 组件命名冲突
 - `clip` 是系统内置属性，自定义参数请用 `clipItem` 等其他名称
@@ -59,8 +61,9 @@ Echo 是一款运行在华为鸿蒙（HarmonyOS）系统上的历史剪贴板管
 
 ### 运行时权限
 - `ohos.permission.READ_PASTEBOARD` 是 user_grant 权限（API 12+）
+- `ohos.permission.DISTRIBUTED_DATASYNC` 是 user_grant 权限（`setDistributedTables` 所需）
 - 启动时通过 `abilityAccessCtrl.requestPermissionsFromUser()` 弹窗请求
-- 权限通过后才启动剪贴板监听；被拒绝则禁用监听
+- 权限通过后才启动剪贴板监听/分布式同步；被拒绝则静默降级为纯本地模式
 - 权限请求代码模式：先 `checkAccessTokenSync` 检查，未授权再 `requestPermissionsFromUser`
 - `abilityAccessCtrl.PermissionRequestResult` 类型可能未导出 → 用类型推断代替显式标注
 
@@ -81,6 +84,69 @@ Echo 是一款运行在华为鸿蒙（HarmonyOS）系统上的历史剪贴板管
 - `loadClips()`: **仅 init() 时调用一次**，从 DB 加载到 `fullClips`
 - 关键原则：对象属性变更时必须创建新实例，否则 ForEach 不重渲染
 - **乐观更新**：所有写操作必须先更新 UI（同步），再异步写 DB。反模式是先 await DB 再更新 UI，导致 50-200ms 感知延迟
+
+### 自由流转架构
+
+#### 概述
+
+Echo 利用 HarmonyOS 分布式能力实现两层跨设备体验：
+
+| 层次 | 版本 | 机制 | 同步内容 |
+|------|:---:|------|------|
+| **分布式 RDB 同步** | v7 | `setDistributedTables` + autoSync | clips / categories 表数据 |
+| **跨端迁移** | v8 | `continuable` + `onContinue` + `onNewWant` | UI 状态（Tab / 搜索 / 筛选） |
+
+两者互补：RDB 保证多设备数据一致，Continuation 保证任务接续体验连续。
+
+#### 分布式 RDB（v7）
+
+- **初始化**：`DatabaseHelper.init()` 中调用 `store.setDistributedTables(['clips', 'categories'], DISTRIBUTED_DEVICE, { autoSync: true })`
+- **安全等级**：`securityLevel: S3`（分布式必需）
+- **远程变更监听**：`store.on('dataChange', SUBSCRIBE_TYPE_REMOTE, callback)`
+  - ClipboardViewModel：远程变更 → `saveSeq++`（中断竞态）→ `loadClips()` → `applyFilters()`
+  - CategoryViewModel：远程变更 → `loadCategories()`
+- **图片限制**：RDB 仅同步文件路径字符串，文件本身不传输。`loadClips()` 中用 `fileIo.statSync()` 检测 → 设置 `imageAvailable`
+- **去重窗口**：300s（覆盖分布式同步延迟下的重复写入）
+- **权限降级**：`DISTRIBUTED_DATASYNC` 被拒 → `setDistributedTables` 静默失败，App 正常以本地模式运行
+
+#### 跨端迁移（v8）
+
+- **配置**：`module.json5` → EntryAbility 设置 `continuable: true`
+- **约束**：双端同华为账号、WiFi+蓝牙、HarmonyOS NEXT Release+
+- **wantParam 限制**：<100KB，Echo 仅传 ~200 字节（3 个小字段）
+
+##### 状态桥接模式（ContinuationBridge）
+
+```
+ClipboardViewModel.onSearch() ──→ ContinuationBridge.searchKeyword
+ClipboardViewModel.onFilterCategory() ──→ ContinuationBridge.selectedCategoryId
+Index (Tab 切换) ──→ ContinuationBridge.currentTab
+                              ↓
+          EntryAbility.onContinue() 快照到 wantParam
+                              ↓
+          对端 EntryAbility.onCreate/onNewWant
+                              ↓
+          Index.checkAndRestoreContinuation() 恢复
+```
+
+- `ContinuationBridge`：单例，位于 `common/ContinuationBridge.ets`
+- 三个核心方法：`snapshotToWantParam()` / `restoreFromWant()` / `consumeIfPending()`
+- 冷启动恢复：`EntryAbility.onCreate()` → `restoreFromWant()` → `Index.aboutToAppear()` → `consumeIfPending()`
+- 热启动恢复：`EntryAbility.onNewWant()` → `restoreFromWant()` → `Index.onPageShow()` → `consumeIfPending()`
+
+##### 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `entry/src/main/ets/common/ContinuationBridge.ets` | 跨端迁移状态桥接单例 |
+
+##### 相关 API 速查
+
+- `onContinue(wantParam: Record<string, Object>): AbilityConstant.OnContinueResult` — 源端保存状态
+- `onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void` — 对端热启动恢复
+- `onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void` — 检查 `launchReason === CONTINUATION`
+- `AbilityConstant.OnContinueResult.AGREE / REJECT / MISMATCH`
+- `AbilityConstant.LaunchReason.CONTINUATION`
 
 ### ArkUI 注意事项
 - `List` 内的 `ForEach` **必须**提供显式 key 函数，否则多个 item 渲染异常

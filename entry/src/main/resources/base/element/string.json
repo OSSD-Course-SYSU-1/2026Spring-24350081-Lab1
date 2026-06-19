@@ -151,6 +151,14 @@
     {
       "name": "pasteboard_permission_reason",
       "value": "Used to read clipboard content for history recording"
+    },
+    {
+      "name": "distributed_datasync_permission_reason",
+      "value": "Used to sync clipboard history across your devices"
+    },
+    {
+      "name": "image_unavailable",
+      "value": "Image unavailable on this device"
     }
   ]
 }

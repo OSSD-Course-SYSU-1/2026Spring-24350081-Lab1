@@ -7,6 +7,7 @@ import preferences from '@ohos.data.preferences';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { DatabaseHelper } from '../database/DatabaseHelper';
 import { ClipItem } from '../model/ClipItem';
+import { ContinuationBridge } from '../common/ContinuationBridge';
 
 const TAG: string = 'Echo-ClipboardVM';
 
@@ -32,6 +33,7 @@ export class ClipboardViewModel {
   private searchTimer: number = -1;
   private defaultCategoryId: number = 1;
   private saveSeq: number = 0;
+  private distributedChangeCallback: ((devices: Array<string>) => void) | null = null;
 
   async init(context: common.UIAbilityContext): Promise<void> {
     this.context = context;
@@ -46,6 +48,8 @@ export class ClipboardViewModel {
     } else {
       hilog.warn(0x0000, TAG, 'READ_PASTEBOARD permission not granted. Monitoring disabled.');
     }
+    // 注册分布式数据变更监听
+    this.registerDistributedListener();
   }
 
   private async requestPermission(): Promise<void> {
@@ -74,6 +78,7 @@ export class ClipboardViewModel {
 
   release(): void {
     this.stopMonitoring();
+    this.unregisterDistributedListener();
   }
 
   // ==================== 剪贴板监听 ====================
@@ -308,8 +313,42 @@ export class ClipboardViewModel {
       }
       list = filtered;
     }
+    // 检查图片文件是否在本地设备可用（分布式场景下远端路径无效）
+    for (const c of list) {
+      if (c.type === 'image') {
+        try {
+          fileIo.statSync(c.content);
+          c.imageAvailable = true;
+        } catch (e) {
+          c.imageAvailable = false;
+        }
+      }
+    }
     this.fullClips = list;
     this.applyFilters();
+  }
+
+  /**
+   * 注册分布式数据变更监听。当远程设备同步数据到本地时，重新加载全量数据。
+   */
+  private registerDistributedListener(): void {
+    this.distributedChangeCallback = (_devices: Array<string>): void => {
+      hilog.info(0x0000, TAG, 'Distributed data change detected, reloading clips');
+      // 递增 saveSeq 以中断进行中的 saveClip 竞态
+      this.saveSeq++;
+      this.loadClips();
+    };
+    this.db.onDistributedDataChange(this.distributedChangeCallback);
+  }
+
+  /**
+   * 注销分布式数据变更监听。
+   */
+  private unregisterDistributedListener(): void {
+    if (this.distributedChangeCallback) {
+      this.db.offDistributedDataChange(this.distributedChangeCallback);
+      this.distributedChangeCallback = null;
+    }
   }
 
   /**
@@ -394,6 +433,7 @@ export class ClipboardViewModel {
     if (this.searchTimer === -1) {
       // Leading edge: 立即响应，用户立刻看到结果
       this.searchKeyword = keyword;
+      ContinuationBridge.instance.searchKeyword = keyword;
       this.applyFilters();
     }
     // 清除旧的 trailing 定时器
@@ -403,6 +443,7 @@ export class ClipboardViewModel {
     // 设置新的 trailing 定时器：停止输入 200ms 后用最终关键词再搜索一次
     this.searchTimer = setTimeout(() => {
       this.searchKeyword = keyword;
+      ContinuationBridge.instance.searchKeyword = keyword;
       this.applyFilters();
       this.searchTimer = -1;
     }, 200);
@@ -414,11 +455,13 @@ export class ClipboardViewModel {
       this.searchTimer = -1;
     }
     this.searchKeyword = '';
+    ContinuationBridge.instance.searchKeyword = '';
     this.applyFilters();
   }
 
   onFilterCategory(categoryId: number): void {
     this.selectedCategoryId = categoryId;
+    ContinuationBridge.instance.selectedCategoryId = categoryId;
     this.applyFilters();
   }
 
@@ -568,6 +611,8 @@ export class ClipboardViewModel {
     this.dataVersion++;
     this.searchKeyword = '';
     this.selectedCategoryId = 0;
+    ContinuationBridge.instance.searchKeyword = '';
+    ContinuationBridge.instance.selectedCategoryId = 0;
     await this.db.deleteAllClips();
   }
 

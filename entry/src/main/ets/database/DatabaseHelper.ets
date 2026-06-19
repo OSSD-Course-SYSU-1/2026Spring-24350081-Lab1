@@ -29,7 +29,7 @@ const SQL_CREATE_CLIPS: string = `
 
 const STORE_CONFIG: relationalStore.StoreConfig = {
   name: DB_NAME,
-  securityLevel: relationalStore.SecurityLevel.S1
+  securityLevel: relationalStore.SecurityLevel.S3
 };
 
 interface QueryOptions {
@@ -54,6 +54,16 @@ export class DatabaseHelper {
     await this.store.executeSql(SQL_CREATE_CATEGORIES);
     await this.store.executeSql(SQL_CREATE_CLIPS);
     await this.ensureDefaultCategory();
+    // 启用分布式设备间同步
+    try {
+      await this.store.setDistributedTables(['clips', 'categories'],
+        relationalStore.DistributedType.DISTRIBUTED_DEVICE,
+        { autoSync: true });
+      console.info(TAG, 'Distributed tables configured successfully');
+    } catch (e) {
+      // 模拟器或不支持分布式的环境会抛异常，静默忽略
+      console.warn(TAG, 'Distributed tables not supported in this environment: ' + String(e));
+    }
   }
 
   getStore(): relationalStore.RdbStore {
@@ -146,7 +156,8 @@ export class DatabaseHelper {
     const dupPred: relationalStore.RdbPredicates = new relationalStore.RdbPredicates('clips');
     dupPred.equalTo('content', clip.content);
     dupPred.equalTo('type', clip.type);
-    dupPred.greaterThan('createdAt', Date.now() - 60000);
+    // 延长到 300s，覆盖分布式同步延迟下的重复写入
+    dupPred.greaterThan('createdAt', Date.now() - 300000);
     const dupResult: relationalStore.ResultSet = await store.query(dupPred);
     if (dupResult.rowCount > 0) {
       dupResult.close();
@@ -253,5 +264,34 @@ export class DatabaseHelper {
     }
     resultSet.close();
     return null;
+  }
+
+  // ==================== 分布式数据变更监听 ====================
+
+  /**
+   * 注册分布式数据变更回调。当远程设备数据变更并同步到本地时触发。
+   * @param callback 回调接收变更设备 ID 列表
+   */
+  onDistributedDataChange(callback: (devices: Array<string>) => void): void {
+    if (!this.store) return;
+    try {
+      this.store.on('dataChange', relationalStore.SubscribeType.SUBSCRIBE_TYPE_REMOTE, callback);
+      console.info(TAG, 'Distributed data change listener registered');
+    } catch (e) {
+      console.warn(TAG, 'Failed to register distributed data change listener: ' + String(e));
+    }
+  }
+
+  /**
+   * 注销分布式数据变更回调。
+   */
+  offDistributedDataChange(callback: (devices: Array<string>) => void): void {
+    if (!this.store) return;
+    try {
+      this.store.off('dataChange', relationalStore.SubscribeType.SUBSCRIBE_TYPE_REMOTE, callback);
+      console.info(TAG, 'Distributed data change listener unregistered');
+    } catch (e) {
+      console.warn(TAG, 'Failed to unregister distributed data change listener: ' + String(e));
+    }
   }
 }

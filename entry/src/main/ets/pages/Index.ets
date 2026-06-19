@@ -7,6 +7,7 @@ import { CategoryPage } from './CategoryPage';
 import { SettingsPage } from './SettingsPage';
 import { SideNav } from '../component/SideNav';
 import { Breakpoint, calcBreakpoint, isWideLayout, sideNavWidth } from '../common/BreakpointConstants';
+import { ContinuationBridge, ContinuationRestoreData } from '../common/ContinuationBridge';
 
 /**
  * 应用主页面 — 响应式导航容器
@@ -26,6 +27,8 @@ struct Index {
 
   async aboutToAppear(): Promise<void> {
     if (this.isInitialized) {
+      // 应用从后台回来时，检查是否有跨端迁移待恢复数据
+      this.checkAndRestoreContinuation();
       return;
     }
     this.isInitialized = true;
@@ -49,11 +52,15 @@ struct Index {
     } catch (e) {
       console.error('Echo-Index', `Init failed: ${JSON.stringify(e)}`);
     }
+    // 检查是否有来自跨端迁移的待恢复数据（冷启动场景）
+    this.checkAndRestoreContinuation();
   }
 
   onPageShow(): void {
     if (this.isInitialized) {
       this.clipboardVM.onForeground();
+      // 检查是否有来自跨端迁移的待恢复数据（热启动场景）
+      this.checkAndRestoreContinuation();
     }
   }
 
@@ -70,6 +77,7 @@ struct Index {
             breakpoint: this.currentBreakpoint,
             onTabChange: (index: number): void => {
               this.currentTab = index;
+              ContinuationBridge.instance.currentTab = index;
               if (index === 0) {
                 this.clipboardVM.cleanExpired();
               }
@@ -146,6 +154,7 @@ struct Index {
         .scrollable(false)
         .onChange((index: number) => {
           this.currentTab = index;
+          ContinuationBridge.instance.currentTab = index;
           if (index === 0) {
             this.clipboardVM.cleanExpired();
           }
@@ -168,5 +177,32 @@ struct Index {
       Text(text).fontSize(10).margin({ top: 2 });
     }
     .padding({ top: 6, bottom: 4 });
+  }
+
+  /**
+   * 检查并恢复跨端迁移过来的状态（由 EntryAbility.onNewWant/onCreate 写入桥接）
+   * - 冷启动：aboutToAppear() 末尾调用
+   * - 热启动：onPageShow() 调用
+   */
+  private checkAndRestoreContinuation(): void {
+    const data: ContinuationRestoreData | null = ContinuationBridge.instance.consumeIfPending();
+    if (!data) {
+      return;
+    }
+    console.info('Echo-Index',
+      `Restoring continuation state: tab=${data.targetTab}, ` +
+      `search="${data.targetSearchKeyword}", category=${data.targetCategoryId}`);
+    // 恢复 Tab
+    if (data.targetTab >= 0 && data.targetTab <= 2) {
+      this.currentTab = data.targetTab;
+    }
+    // 恢复搜索关键词
+    if (data.targetSearchKeyword.length > 0) {
+      this.clipboardVM.onSearch(data.targetSearchKeyword);
+    }
+    // 恢复分类筛选
+    if (data.targetCategoryId > 0) {
+      this.clipboardVM.onFilterCategory(data.targetCategoryId);
+    }
   }
 }

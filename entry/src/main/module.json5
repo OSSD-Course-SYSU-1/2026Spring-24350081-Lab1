@@ -22,6 +22,7 @@
         "startWindowIcon": "$media:app",
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
+        "continuable": true,
         "skills": [
           {
             "entities": [
@@ -41,6 +42,16 @@
       {
         "name": "ohos.permission.READ_PASTEBOARD",
         "reason": "$string:pasteboard_permission_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
+      },
+      {
+        "name": "ohos.permission.DISTRIBUTED_DATASYNC",
+        "reason": "$string:distributed_datasync_permission_reason",
         "usedScene": {
           "abilities": [
             "EntryAbility"
