@@ -144,7 +144,7 @@ export struct ClipboardPage {
                     })
                 )
               }, (clip: ClipItem): string => {
-                return clip.id.toString();
+                return clip.id.toString() + '_' + clip.categoryId.toString() + '_' + (clip.isPinned ? '1' : '0');
               })
             }
             .width('100%')
@@ -205,7 +205,7 @@ export struct ClipboardPage {
                   }, 280);
                 })
               }, (clip: ClipItem): string => {
-                return clip.id.toString();
+                return clip.id.toString() + '_' + clip.categoryId.toString() + '_' + (clip.isPinned ? '1' : '0');
               })
             }
             .columnsTemplate('1fr 1fr 1fr')
@@ -247,7 +247,7 @@ export struct ClipboardPage {
               }
               .padding({ left: 3, right: 3, top: 3, bottom: 3 })
             }, (clip: ClipItem): string => {
-              return clip.id.toString();
+              return clip.id.toString() + '_' + clip.categoryId.toString() + '_' + (clip.isPinned ? '1' : '0');
             })
           }
           .columnsTemplate('1fr 1fr')

@@ -96,7 +96,7 @@ export struct CategoryPage {
                 .padding({ left: 16, right: 12 })
                 .margin({ left: 16, right: 16, top: 4, bottom: 4 })
               }, (cat: CategoryItem): string => {
-                return cat.id.toString() + '_' + cat.name;
+                return cat.id.toString() + '_' + cat.name + '_' + cat.color;
               })
             }
             .width('100%')
@@ -153,7 +153,7 @@ export struct CategoryPage {
                   .padding(14)
                   .margin({ top: 4, bottom: 4 })
                 }, (cat: CategoryItem): string => {
-                  return 'left_' + cat.id.toString();
+                  return 'left_' + cat.id.toString() + '_' + cat.name + '_' + cat.color;
                 })
               }
               .layoutWeight(1)
@@ -204,7 +204,7 @@ export struct CategoryPage {
                   .padding(14)
                   .margin({ top: 4, bottom: 4 })
                 }, (cat: CategoryItem): string => {
-                  return 'right_' + cat.id.toString();
+                  return 'right_' + cat.id.toString() + '_' + cat.name + '_' + cat.color;
                 })
               }
               .layoutWeight(1)
@@ -331,14 +331,16 @@ export struct CategoryPage {
           ForEach(CATEGORY_COLORS, (color: string) => {
             Column() {
               Text('●')
-                .fontSize(this.selectedColor === color ? 28 : 24)
+                .fontSize(this.selectedColor === color
+                  ? (this.breakpoint === Breakpoint.SM ? 22 : 28)
+                  : (this.breakpoint === Breakpoint.SM ? 18 : 24))
                 .fontColor(color)
             }
-            .width(40)
-            .height(40)
+            .width(this.breakpoint === Breakpoint.SM ? 32 : 40)
+            .height(this.breakpoint === Breakpoint.SM ? 32 : 40)
             .justifyContent(FlexAlign.Center)
             .alignItems(HorizontalAlign.Center)
-            .borderRadius(20)
+            .borderRadius(this.breakpoint === Breakpoint.SM ? 16 : 20)
             .border({
               width: this.selectedColor === color ? 2 : 0,
               color: color

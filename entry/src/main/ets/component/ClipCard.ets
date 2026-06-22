@@ -85,6 +85,7 @@ export struct ClipCard {
             .margin({ top: 6 })
           }
           .layoutWeight(1)
+          .margin({ right: (this.wideLayout && this.showActions) ? 36 : 0 })
         }
         .width('100%')
         .padding(this.wideLayout ? 20 : 14)

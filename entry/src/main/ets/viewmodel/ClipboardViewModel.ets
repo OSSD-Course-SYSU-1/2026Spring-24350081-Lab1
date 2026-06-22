@@ -55,20 +55,47 @@ export class ClipboardViewModel {
   private async requestPermission(): Promise<void> {
     try {
       const atManager: abilityAccessCtrl.AtManager = abilityAccessCtrl.createAtManager();
-      const grantStatus: abilityAccessCtrl.GrantStatus =
-        atManager.checkAccessTokenSync(this.context!.applicationInfo.accessTokenId, 'ohos.permission.READ_PASTEBOARD');
-      if (grantStatus === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED) {
+      const tokenId: number = this.context!.applicationInfo.accessTokenId;
+
+      // 检查两个权限的授权状态
+      const pasteboardGranted: boolean =
+        atManager.checkAccessTokenSync(tokenId, 'ohos.permission.READ_PASTEBOARD') ===
+        abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
+      const distributedGranted: boolean =
+        atManager.checkAccessTokenSync(tokenId, 'ohos.permission.DISTRIBUTED_DATASYNC') ===
+        abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
+
+      if (pasteboardGranted) {
         this.isPermissionGranted = true;
         hilog.info(0x0000, TAG, 'READ_PASTEBOARD already granted');
+      }
+      if (distributedGranted) {
+        hilog.info(0x0000, TAG, 'DISTRIBUTED_DATASYNC already granted');
+      }
+
+      // 收集未授权的权限统一请求
+      const ungranted: Permissions[] = [];
+      if (!pasteboardGranted) {
+        ungranted.push('ohos.permission.READ_PASTEBOARD');
+      }
+      if (!distributedGranted) {
+        ungranted.push('ohos.permission.DISTRIBUTED_DATASYNC');
+      }
+
+      if (ungranted.length === 0) {
         return;
       }
-      const permissions: Permissions[] = ['ohos.permission.READ_PASTEBOARD'];
-      const result = await atManager.requestPermissionsFromUser(this.context!, permissions);
-      if (result.authResults[0] === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED) {
-        this.isPermissionGranted = true;
-        hilog.info(0x0000, TAG, 'READ_PASTEBOARD granted by user');
-      } else {
-        hilog.warn(0x0000, TAG, 'READ_PASTEBOARD denied by user');
+
+      const result = await atManager.requestPermissionsFromUser(this.context!, ungranted);
+      for (let i: number = 0; i < ungranted.length; i++) {
+        const perm: string = ungranted[i];
+        const granted: boolean = result.authResults[i] === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
+        if (perm === 'ohos.permission.READ_PASTEBOARD') {
+          this.isPermissionGranted = granted;
+          hilog.info(0x0000, TAG, `READ_PASTEBOARD ${granted ? 'granted' : 'denied'} by user`);
+        } else if (perm === 'ohos.permission.DISTRIBUTED_DATASYNC') {
+          hilog.info(0x0000, TAG, `DISTRIBUTED_DATASYNC ${granted ? 'granted' : 'denied'} by user`);
+        }
       }
     } catch (err) {
       const e: BusinessError = err as BusinessError;
