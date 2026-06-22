@@ -40,7 +40,7 @@ Echo 是一款运行在华为鸿蒙系统上的**历史剪贴板管理**应用�
 | 操作 | 手机 (SM) | 平板 (MD) | PC / 2in1 (LG) |
 |------|:--------:|:--------:|:-------:|
 | 复制 | 单击卡片 | 单击卡片 / 点 ⋯ → ActionSheet | 单击卡片 |
-| 操作菜单 | 长按 → ActionSheet | 点 ⋯ 按钮 → ActionSheet | 右键 → Menu / 点 ⋯ → ActionSheet |
+| 操作菜单 | 长按 → ActionSheet | 点 ⋯ 按钮 → ActionSheet / 长按 → Menu | 右键 → Menu / 点 ⋯ → ActionSheet |
 | 预览 | — | — | 双击卡片 → 右侧预览面板 |
 | 关闭预览 | — | — | Escape 键 / 点击 ✕ |
 | 悬停高亮 | — | — | onHover → 阴影 + 缩放 |
@@ -118,7 +118,7 @@ saveClip()
 - **乐观更新**：所有写操作先更新 UI（同步），再异步写 DB，即时响应（< 1ms）
 - **对象重建**：属性变更时创建新对象实例，新引用触发 ForEach 重渲染
 - **纯内存筛选**：搜索/分类筛选不查 DB，直接在 `fullClips` 上过滤
-- **去重机制**：内存级（`lastContent`）+ 数据库级（60s 内相同内容去重）+ 序列号防竞态
+- **去重机制**：内存级（`lastContent`）+ 数据库级（300s 内相同内容去重，覆盖分布式同步延迟）+ 序列号防竞态
 - **基线机制**：启动时读取剪贴板建立基线，防止 App 关闭期间的旧数据被存入
 - **`@Trace dataVersion`**：原始类型计数器保障条件渲染下的响应式依赖
 
@@ -172,6 +172,15 @@ saveClip()
 - `EntryAbility` 实现 `onContinue` / `onNewWant` / `onCreate` 迁移三件套
 - `Index` / `ClipboardViewModel` 同步 UI 状态到桥接，对端自动恢复
 - 分布式 RDB（数据同步）+ Continuation（任务接续）= 完整自由流转体验
+
+### 2026-06-22：编译验证 + UI 修复
+
+- 自由流转全链路编译验证（CompileArkTS 零新增错误）
+- 补全 `DISTRIBUTED_DATASYNC` 运行时权限请求（与 `READ_PASTEBOARD` 合并弹窗）
+- 修复分类页颜色圆圈在手机上溢出弹窗边框（SM 下缩小至 32×32 vp）
+- 修复分类颜色 / 名称修改后列表刷新不及时（ForEach key 加入 `color`）
+- 修复移动分类后卡片标签刷新不及时（ForEach key 加入 `categoryId` + `isPinned`）
+- 修复平板端 `⋯` 按钮与文字重叠（内容区 Column 增加右边距 36 vp）
 
 ### 2026-06-09（原）：多端 UI + PC 交互
 

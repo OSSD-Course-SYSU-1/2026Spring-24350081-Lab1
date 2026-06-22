@@ -26,6 +26,7 @@
 |------|------|
 | `ohos.permission.INTERNET` | 基础网络权限 |
 | `ohos.permission.READ_PASTEBOARD` | 读取系统剪贴板 |
+| `ohos.permission.DISTRIBUTED_DATASYNC` | 跨设备分布式数据库同步 |
 
 ## 项目结构
 
